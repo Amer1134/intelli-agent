@@ -34,13 +34,34 @@ if user_input:
   #  ai_message = response['messages'][-1].content
     #first add the message to message history
 
-    with st.chat_message("assistant"):
-        ai_message = st.write_stream(
-            message_chunk.content for message_chunk, metadata in chatbot.stream(
-                {'messages' : [HumanMessage(content=user_input)]},config=CONFIG,
-                stream_mode= 'messages'
-            )
+    
+#gemini model returns structured content, so we need to extract the text from the structured content
+def extract_text(message_chunk):
+    content = message_chunk.content
+
+    # Normal string content
+    if isinstance(content, str):
+        yield content
+
+    # Structured content
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    yield text
+
+
+with st.chat_message("assistant"):
+    ai_message = st.write_stream(
+        text
+        for message_chunk, metadata in chatbot.stream(
+            {'messages': [HumanMessage(content=user_input)]},
+            config=CONFIG,
+            stream_mode='messages'
         )
+        for text in extract_text(message_chunk)
+    )
 
 
     st.session_state['message_history'].append({'role':'assistant','content':ai_message})
