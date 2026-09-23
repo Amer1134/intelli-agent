@@ -8,6 +8,24 @@ def generate_thread_id():
     return str(uuid.uuid4())
 
 
+def extract_text(message_chunk):
+    content = message_chunk.content
+
+    # Normal string content
+    if isinstance(content, str):
+        yield content
+
+    # Gemini structured content
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    yield text
+
+
+
+
 
 # Add a new thread ID to the conversation list
 def add_thread(thread_id):
@@ -28,7 +46,7 @@ def reset_chat():
     st.session_state["message_history"] = []
 
     # Add the new thread to the conversation list
-    add_thread(st.session_state["thread_id"])
+    # add_thread(st.session_state["thread_id"])
 
 
 
@@ -49,6 +67,14 @@ def load_conversation(thread_id):
     return state.values.get("messages", [])
 
 
+def generate_chat_title(user_input):
+    title = " ".join(user_input.strip().split())
+
+    if len(title) > 40:
+        title = title[:40].rstrip() + "..."
+
+    return title
+
 
 # Display the main application title
 st.title("Agentic Chatbot with LangGraph")
@@ -67,6 +93,9 @@ if "thread_id" not in st.session_state:
 # Create a list for storing all conversation thread IDs
 if "chat_threads" not in st.session_state:
     st.session_state["chat_threads"] = []
+
+if "chat_titles" not in st.session_state:
+    st.session_state["chat_titles"] = {}
 
 
 
@@ -96,9 +125,16 @@ if st.sidebar.button("New Chat"):
 # This shows the newest conversation first
 for thread_id in st.session_state["chat_threads"][::-1]:
 
-    # Create one sidebar button for every conversation
+    chat_title = st.session_state["chat_titles"].get(
+        thread_id
+    )
+
+    # Only display conversations that have a title
+    if not chat_title:
+        continue
+
     if st.sidebar.button(
-        str(thread_id),
+        chat_title,
         key=thread_id
     ):
 
@@ -164,14 +200,23 @@ user_input = st.chat_input("Type here")
 # Run this block after the user submits a message
 if user_input:
 
-    # Save the user's message in Streamlit session state
+    # Get the current conversation's thread ID
+    current_thread = st.session_state["thread_id"]
+
+    # Create a title from the first user message
+    if current_thread not in st.session_state["chat_titles"]:
+        st.session_state["chat_titles"][current_thread] = generate_chat_title(user_input)
+
+        # Add the conversation only after it has a title
+        # add_thread(current_thread)
+
+
+    # Save user's message
     st.session_state["message_history"].append({
         "role": "user",
         "content": user_input
     })
 
-
-    # Display the user's message in the chat interface
     with st.chat_message("user"):
         st.text(user_input)
 
@@ -188,36 +233,29 @@ if user_input:
     # Create the assistant chat-message container
     with st.chat_message("assistant"):
 
-        # Stream the assistant response token by token
         ai_message = st.write_stream(
-
-            # Return only the content of AI message chunks
-            message_chunk.content
-
-            # Stream messages from the LangGraph chatbot
+            text
             for message_chunk, metadata in chatbot.stream(
                 {
-                    # Send the latest user message to the chatbot
                     "messages": [
                         HumanMessage(content=user_input)
                     ]
                 },
-
-                # Use the current conversation thread
                 config=CONFIG,
-
-                # Stream individual message chunks
                 stream_mode="messages"
             )
-
-            # Display only AI messages
-            # This prevents tool and user messages from appearing
             if isinstance(message_chunk, AIMessage)
+            for text in extract_text(message_chunk)
         )
 
 
     # Save the complete assistant response in Streamlit session state
     st.session_state["message_history"].append({
-        "role": "assistant",
+        "role": "assistant", 
         "content": ai_message
     })
+
+
+    # Now the Human → AI conversation is complete,
+    # so add it to the conversation list
+    add_thread(current_thread)
