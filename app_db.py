@@ -7,6 +7,22 @@ import uuid
 def generate_thread_id():
     return str(uuid.uuid4())
 
+#extract text from Gemini structured content
+def extract_text(message_chunk):
+    content = message_chunk.content
+
+    # Normal string content
+    if isinstance(content, str):
+        yield content
+
+    # Gemini structured content
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    yield text
+
 
 
 # Add a new thread ID to the conversation list
@@ -129,10 +145,23 @@ for thread_id in st.session_state["chat_threads"][::-1]:
                 continue
 
 
-            # Convert the LangChain message into a dictionary
+            # Convert Gemini structured content into plain text
+            if isinstance(message.content, str):
+                content = message.content
+
+            elif isinstance(message.content, list):
+                content = "".join(
+                    block.get("text", "")
+                    for block in message.content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
+
+            else:
+                continue
+
             temp_messages.append({
                 "role": role,
-                "content": message.content
+                "content": content
             })
 
 
@@ -190,33 +219,25 @@ if user_input:
 
 
     # Create the assistant chat-message container
+
+    def clean_stream(user_input):
+        for message_chunk, metadata in chatbot.stream(
+            {
+                "messages": [
+                    HumanMessage(content=user_input)
+                ]
+            },
+            config=CONFIG,
+            stream_mode="messages"
+        ):
+            if isinstance(message_chunk, AIMessage):
+                yield from extract_text(message_chunk)
+
+
     with st.chat_message("assistant"):
 
-        # Stream the assistant response token by token
         ai_message = st.write_stream(
-
-            # Return only the content of AI message chunks
-            message_chunk.content
-
-            # Stream messages from the LangGraph chatbot
-            for message_chunk, metadata in chatbot.stream(
-                {
-                    # Send the latest user message to the chatbot
-                    "messages": [
-                        HumanMessage(content=user_input)
-                    ]
-                },
-
-                # Use the current conversation thread
-                config=CONFIG,
-
-                # Stream individual message chunks
-                stream_mode="messages"
-            )
-
-            # Display only AI messages
-            # This prevents tool and user messages from appearing
-            if isinstance(message_chunk, AIMessage)
+            clean_stream(user_input)
         )
 
 

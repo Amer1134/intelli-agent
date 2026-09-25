@@ -17,7 +17,7 @@ load_dotenv()
 
 ## if you want to use Gemini LLM 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3.6-flash",
     temperature=0.7
 )
 
@@ -59,6 +59,17 @@ def get_all_threads():
         all_threads.add(ckpt.config['configurable']['thread_id'])
 
     return list(all_threads)
+
+#CONFIG = {"configurable": {"thread_id": "ABC"}}
+#res = chatbot.invoke(
+#    {
+#        "messages": [
+#            HumanMessage(content="Hello. My name is Alex")
+#        ]
+#    },
+#    config=CONFIG
+#)
+#print(res)
 
 
    
